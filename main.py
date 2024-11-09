@@ -11,37 +11,29 @@ from .database import engine, SessionLocal
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 
-# Настройка FastAPI
 app = FastAPI()
 
-# Создание базы данных
 Base.metadata.create_all(bind=engine)
 
-# Настройка шаблонов
 templates = Jinja2Templates(directory="templates")
 
-# Настройка OAuth2
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Telegram Bot
-BOT_TOKEN = os.environ.get('BOT_TOKEN')  # Замените на свой токен
+BOT_TOKEN = os.environ.get('BOT_TOKEN') 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Hello {update.effective_user.first_name}! I'm your bot!")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
-    # Обработка сообщения пользователя
-    # (например, проверка команд, отправка ответов)
 
-# Telegram Bot: Настройка и запуск
 if __name__ == "__main__":
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.run_polling()
 
-# FastAPI: Маршруты
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, current_user: User = Depends(get_current_user)):
     return templates.TemplateResponse("index.html", {"request": request, "user": current_user})
