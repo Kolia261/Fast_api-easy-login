@@ -8,7 +8,6 @@ import os
 SQLALCHEMY_DATABASE_URL = os.getenv('DATABASE_URL')
 
 if not SQLALCHEMY_DATABASE_URL:
-    # In-memory database for development
     SQLALCHEMY_DATABASE_URL = "sqlite:///./fastapi.db"
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
