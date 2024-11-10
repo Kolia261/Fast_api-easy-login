@@ -1,5 +1,5 @@
 #!/bin/sh
-'''exec' "/home/nikolay/Рабочий стол/developing/fastapi_login_reg/.venv/bin/python3" "$0" "$@"
+'''exec' "/home/nikolay/Рабочий стол/developing/fast_api authentic/.venv/bin/python3.12" "$0" "$@"
 ' '''
 # -*- coding: utf-8 -*-
 import re

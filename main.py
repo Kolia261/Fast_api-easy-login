@@ -1,15 +1,13 @@
-import os
-from fastapi import FastAPI, Request, Form, redirect,  Depends,  HTMLResponse
+from fastapi import FastAPI, Depends, Form, Request, HTTPException, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
-from .auth import get_current_user, authenticate_user, signup_user
-from .models import User, Base
-from .database import engine, SessionLocal
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
+from passlib.context import CryptContext
+
+from auth import get_password_hash, verify_password, get_current_user
+from database import get_db, engine, Base
+from models import User
 
 app = FastAPI()
 
@@ -17,45 +15,46 @@ Base.metadata.create_all(bind=engine)
 
 templates = Jinja2Templates(directory="templates")
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Telegram Bot
-BOT_TOKEN = os.environ.get('BOT_TOKEN') 
+@app.post("/register", response_class=HTMLResponse)
+async def register(request: Request, db: Session = Depends(get_db), username: str = Form(...), password: str = Form(...), email: str = Form(...)):
+    existing_user = db.query(User).filter(User.username == username).first()
+    if existing_user:
+        return templates.TemplateResponse("register.html", {"request": request, "error": "Username already exists"})
+    existing_user = db.query(User).filter(User.email == email).first()
+    if existing_user:
+        return templates.TemplateResponse("register.html", {"request": request, "error": "Email already exists"})
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Hello {update.effective_user.first_name}! I'm your bot!")
+    new_user = User(username=username, password=get_password_hash(password), email=email)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return templates.TemplateResponse("index.html", {"request": request, "message": "Registration successful"})
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text
+@app.post("/login", response_class=HTMLResponse)
+async def login(request: Request, db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()):
+    user = db.query(User).filter(User.username == form_data.username).first()
+    if not user:
+        return templates.TemplateResponse("login.html", {"request": request, "error": "Incorrect username or password"})
+    if not verify_password(form_data.password, user.password):
+        return templates.TemplateResponse("login.html", {"request": request, "error": "Incorrect username or password"})
 
-if __name__ == "__main__":
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.run_polling()
+
+    return templates.TemplateResponse("index.html", {"request": request, "user": user, "message": "Login successful"})
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, current_user: User = Depends(get_current_user)):
-    return templates.TemplateResponse("index.html", {"request": request, "user": current_user})
+async def index(request: Request, user: User = Depends(get_current_user)):
+    return templates.TemplateResponse("index.html", {"request": request, "user": user})
 
-@app.post("/login", response_class=RedirectResponse)
-async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
-    user = authenticate_user(db=SessionLocal(), username=form_data.username, password=form_data.password)
-    if user is None:
-        return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid credentials"})
-    else:
-        return RedirectResponse(url="/", status_code=302)
+@app.get("/login", response_class=HTMLResponse)
+async def login_form(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
 
-@app.post("/register", response_class=RedirectResponse)
-async def register(request: Request, username: str = Form(...), password: str = Form(...)):
-    signup_user(db=SessionLocal(), username=username, password=password)
-    return RedirectResponse(url="/login", status_code=302)
+@app.get("/register", response_class=HTMLResponse)
+async def register_form(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request})
 
-@app.get("/token")
-async def get_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = authenticate_user(db=SessionLocal(), username=form_data.username, password=form_data.password)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=302)
-    else:
-        token = user.generate_jwt()
-        return {"access_token": token, "token_type": "bearer"}
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
